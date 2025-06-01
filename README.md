@@ -57,7 +57,7 @@ A Spring Boot–based AI chat service specialized in gaming-related queries and 
 - **JDK 24**
 - **Docker**
 - **Maven 3.6+** 
-- **Ollama CLI** (configured to serve Llama 3.2)
+- **Ollama CLI** (configured to serve Llama 3.2 and nomic-embed-text for embeddings)
 - **API key** (if using any external AI providers)
 
 ---
