@@ -1,0 +1,105 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL with ML extensions
+  postgresml:
+    image: ghcr.io/postgresml/postgresml:2.9.3
+    container_name: postgresml
+    environment:
+      - POSTGRES_USER=postgresml
+      - POSTGRES_PASSWORD=postgresml
+      - POSTGRES_DB=postgresml
+    ports:
+      - "5433:5432"
+      - "8000:8000"
+    volumes:
+      - postgresml_data:/var/lib/postgresql/data
+      - ./db/users.sql:/docker-entrypoint-initdb.d/01-init.sql
+    # Keep the container running with PostgreSQL service
+    command: |
+      sh -c "
+        service postgresql start &&
+        sudo -u postgresml createdb postgresml 2>/dev/null || true &&
+        tail -f /var/log/postgresql/postgresql-15-main.log
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgresml -d postgresml -h localhost -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Ollama service for AI models
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # Model puller service - separate service to pull models
+  ollama-puller:
+    image: ollama/ollama:latest
+    container_name: ollama-puller
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo 'Pulling models...' &&
+        ollama pull llama3.2 &&
+        ollama pull nomic-embed-text &&
+        echo 'Models pulled successfully!'
+      "
+    restart: "no"  # Don't restart this service
+
+# Spring Boot Chat Application
+  chat-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-app
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgresml
+      - SPRING_DATASOURCE_USERNAME=myappuser
+      - SPRING_DATASOURCE_PASSWORD=mypassword
+      - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
+      - SPRING_AI_OLLAMA_CHAT_MODEL=llama3.2
+      - SPRING_AI_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+      - SPRING_AI_VECTORSTORE_PGVECTOR_DIMENSIONS=768
+      - SPRING_AI_VECTORSTORE_PGVECTOR_INITIALIZE_SCHEMA=true
+      - SPRING_SQL_INIT_MODE=always
+      - SPRING_AI_CHAT_MEMORY_REPOSITORY_JDBC_INITIALIZE_SCHEMA=always
+    depends_on:
+      postgresml:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-puller:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  postgresml_data:
+  ollama_data:

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 
-# PGPASSWORD=mypassword psql -U myappuser -h localhost -p 5433 postgresml
-
-cat users.sql |  psql -U postgresml  -h localhost -p 5433 postgresml
+# Run SQL commands inside the running PostgreSQL container
+docker exec -i postgresml psql -U postgresml -d postgresml < users.sql
