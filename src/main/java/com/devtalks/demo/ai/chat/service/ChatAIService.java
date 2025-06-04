@@ -24,7 +24,7 @@ public class ChatAIService {
 	                     ChatClient.Builder ai,
 	                     WikiRepository wikiRepository,
 	                     VectorStore vectorStore,
-	                     ToolsConfiguration toolsConfiguration, PromptChatMemoryAdvisor promptChatMemoryAdvisor) {
+	                     PromptChatMemoryAdvisor promptChatMemoryAdvisor) {
 		int count = db.sql("SELECT count(*) FROM vector_store")
 				.query(Integer.class)
 				.single();
