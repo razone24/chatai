@@ -1,80 +1,49 @@
 package com.devtalks.demo.ai.chat.service;
 
-import java.util.List;
-
-import com.devtalks.demo.ai.chat.repository.Wiki;
-import com.devtalks.demo.ai.chat.repository.WikiRepository;
 import com.devtalks.demo.ai.chat.tools.ToolsConfiguration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ChatAIService {
 
+	private static final Logger log = LoggerFactory.getLogger(ChatAIService.class);
 	private final ChatClient ai;
 
-	public ChatAIService(JdbcClient db,
-	                     ChatClient.Builder ai,
-	                     WikiRepository wikiRepository,
-	                     VectorStore vectorStore,
-	                     ToolsConfiguration toolsConfiguration, PromptChatMemoryAdvisor promptChatMemoryAdvisor) {
-		int count = db.sql("SELECT count(*) FROM vector_store")
-				.query(Integer.class)
-				.single();
-		if (count == 0) {
-			wikiRepository.findAll()
-					.forEach(wiki -> createVectorStoreData(vectorStore, wiki));
-		}
-
+	public ChatAIService(ChatClient.Builder ai,
+	                     ToolsConfiguration toolsConfiguration) {
+		
 		var systemPrompt = """
-				You provide game information from a wiki database with this exact structure:
-				- id: unique identifier
-				- feature: game name (like "Poker Game", "Blackjack Game", "Roulette Game", "Slots Game", "Bingo Game")
-				- owner: team responsible (like "Poker Team", "Blackjack Team", etc.)
-				- description: detailed reward information
-				
-				When users ask about games, search the wiki database for matching entries and respond based on what they're asking for:
+				You are a game information assistant with access to functions.
 				
 				When users ask about games:
-				1. First check if the requested game exists in the wiki database
-				2. If the game exists, search for the matching entry and respond based on what they're asking for:
-				   - For REWARD/DESCRIPTION questions: Return ONLY the description field content
-				   - For OWNER questions: Return ONLY the owner field content
-				   - For FEATURE NAME questions: Return ONLY the feature field content
-				3. If the game does NOT exist in the wiki database, say "I don't have information about [game name] in the wiki database."
+				- Extract the game name (poker, chess, etc.) from the question
+				- Call getGameInfo function with just the game name
+				- Call getGameOwner function for ownership questions
+				- Call getAllGamesInformation function when asked about available games
 				
-				FORBIDDEN: Never return the ID field. Never return information about the wrong game.
+				IMPORTANT: Execute the functions and return their actual results, not function call descriptions.
 				
-				Never include field names, formatting, additional explanation, or the ID field. Just the pure field content that answers their question.
+				Examples:
+				- "Tell me about chess" → Call getGameInfo("chess") → Return the game details
+				- "Who owns poker?" → Call getGameOwner("poker") → Return the owner
+				- "What games are available?" → Call getAllGamesInformation() → Return the list
 				""";
-		this.ai = ai.defaultAdvisors(
-						new QuestionAnswerAdvisor(vectorStore),
-						promptChatMemoryAdvisor
-
-				)
-//				.defaultTools(toolsConfiguration)
+		
+		this.ai = ai
+				.defaultTools(toolsConfiguration)
 				.defaultSystem(systemPrompt)
 				.build();
 	}
 
-    public String ask(String user, String message) {
-        var response = ai.prompt()
-                         .user(message)
-                         .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, user))
-                         .call();
-        return response.content();
-    }
-
-	private static void createVectorStoreData(VectorStore vectorStore, Wiki wiki) {
-		var dataFormat = "id: %s, feature: %s, owner: %s, description: %s";
-		var wikiDocument = new Document(dataFormat.formatted(wiki.id(), wiki.feature(), wiki.owner(), wiki.description()));
-		vectorStore.add(List.of(wikiDocument));
+	public String ask(String user, String message) {
+		log.info("Asking user {} to {}", user, message);
+		var response = ai.prompt()
+				.user(message)
+				.call();
+		return response.content();
 	}
 }
