@@ -59,7 +59,6 @@ public class ChatAIService {
 						promptChatMemoryAdvisor
 
 				)
-//				.defaultTools(toolsConfiguration)
 				.defaultSystem(systemPrompt)
 				.build();
 	}
